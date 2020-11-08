@@ -24,12 +24,9 @@ class NetworkDataset(Dataset):
             Args:
             ----
 
-                train (boolean):                Boolean variable determining whether to load train or validation data
-                target (string):                Task to implement ('acl','meniscus','abnormal')
-                plane (string):                'coronal', 'axial' or 'sagittal'
-                root_dir (string):              Directory with all the images and data.
-                transform (callable, optional): Optional transform to be applied
-                                                on a sample.
+                X (array):                 Features array
+                y (string):                Target array
+                
             """
             super(NetworkDataset, self).__init__()
             self.X=X
@@ -52,10 +49,9 @@ class NetworkDataset(Dataset):
         return np.array(o)
 
     @staticmethod
-    def gen_random_translated_meta(l):
+    def gen_random_translated_meta(meta_matrix):
         n=len(l)
         start=random.choice(range(3,8))
-        meta_matrix=transform_meta(l)
         sub_matrix=meta_matrix[:n,:]
         translated_matrix=np.array([[-1 for _ in range(5)] for i in range(8)])
         translated_matrix[start:start+n,:]=sub_matrix
@@ -63,22 +59,22 @@ class NetworkDataset(Dataset):
 
 
     def _process_data(self, rebalance=False):
-        self.meta = np.array([transform_meta(x[0]) for x in self.X])
-        self.l = np.array([len(x[0]) for x in self.X])
-        self.X = np.array([np.array(X_i) for X_i in self.X[:, 1]])
+        meta = np.array([transform_meta(x[0]) for x in self.X])
+        l = np.array([len(x[0]) for x in self.X])
+        X = np.array([np.array(X_i) for X_i in self.X[:, 1]])
         if rebalance: 
-            labels, counts = np.unique(self.l, return_counts=True)
+            labels, counts = np.unique(l, return_counts=True)
             new_index = np.array([])
             count_max = counts.max()
             for label, count in zip(labels, counts):
                 diff = count_max - count
-                eq = np.where(self.l == label)[0]
+                eq = np.where(l == label)[0]
                 new_index = np.hstack((new_index,  eq, 
                                         np.random.choice(eq, diff, replace=True))).astype(int)
             new_index = np.random.permutation(new_index)
             meta = meta[new_index]
-            self.l = self.l[new_index]
-            self.X = self.X[new_index]
+            self.l = l[new_index]
+            self.X = X[new_index]
             if self.y is not None:
                 self.y = self.y[new_index]
         if self.y is not None:
@@ -92,9 +88,9 @@ class NetworkDataset(Dataset):
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
             idx = idx.tolist()
-        meta = np.array(transform_meta(X[idx][0]))
-        l = np.array([len(X[idx][0])])
-        X = np.array([np.array(X[idx, 1]))
+        meta = np.array(transform_meta(self.X[idx][0]))
+        l = np.array([len(self.X[idx][0])])
+        X = np.array([np.array(self.X[idx, 1]))
         
 
         return {
@@ -102,4 +98,16 @@ class NetworkDataset(Dataset):
             "meta":meta,
             "l":l
                 }
+
+    def augment_data(self,ratio):
+        n=len(self.X)
+        processed_data=self._process_data()
+        idx_list=random.choice(range(int(n*ratio)))
+        for idx in idx_list :
+            item=processed_data[idx]
+            processed_data.append({"X":item["X"],
+                                "meta": gen_random_translated_meta(item["meta"]),
+                                "l":item["l"]})
+
+
 
