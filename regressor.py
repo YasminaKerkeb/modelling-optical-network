@@ -84,7 +84,7 @@ class BaseRegressor(abc.ABC):
         on_chan = x != 0
         o = torch.mul(on_chan, o)
         y = torch.mul(on_chan, y)
-        error = self.loss_fn(y, o)
+        error = self.em99_loss(y, o)
         error.backward()
         self.optimizer.step()
     
@@ -119,8 +119,10 @@ class BaseRegressor(abc.ABC):
         X_processed, _ = self._process_data(X, y=None)
         with torch.no_grad():
             if self.best_model is not None:
+                self.best_model.eval()
                 o =  self.best_model(*X_processed.values()).detach().numpy() 
             else:
+                self.net.eval()
                 o = self.net(*X_processed.values()).detach().numpy()
         return np.maximum(o, 0)
 
