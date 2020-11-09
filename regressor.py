@@ -5,11 +5,15 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from  torch.utils.data import DataLoader, TensorDataset
+from  torch.utils.data import DataLoader, TensorDataset, Dataset
 from torch.nn.utils.rnn import pack_padded_sequence
 import abc
 from sklearn.model_selection import train_test_split
 import copy
+import sys
+sys.path.insert(0,'/Users/mac/Documents/Huawei_Challenge/optical_network_modelling/submissions/lstm_net')
+from dataloader import NetworkDataset
+import random
 
 
 eps = 1e-8
@@ -33,6 +37,9 @@ def transform_meta(l):
             o[i, -1] = 1
     return np.array(o)
 
+
+  
+
 class BaseRegressor(abc.ABC):
     # inheriting classes should have properties:
     # - optimizer 
@@ -42,7 +49,7 @@ class BaseRegressor(abc.ABC):
     def __init__(self):
         self.net = None
         self.optimizer = None
-        self.loss_fn = None
+        self.loss_fn = nn.MSELoss()
         self.nepochs = 100
         self.rebalance_data = False
         self.batch_size = 128
@@ -84,7 +91,7 @@ class BaseRegressor(abc.ABC):
         on_chan = x != 0
         o = torch.mul(on_chan, o)
         y = torch.mul(on_chan, y)
-        error = self.em99_loss(y, o)
+        error = self.loss_fn(y, o)
         error.backward()
         self.optimizer.step()
     
@@ -98,9 +105,12 @@ class BaseRegressor(abc.ABC):
         if test_data is not None:
             Xte_processed, yte = self._process_data(Xte, yte, rebalance=False)
             best_test_score = np.inf
-        X_processed, y = self._process_data(Xtr, ytr, rebalance=self.rebalance_data)
-        dataset = TensorDataset(*X_processed.values(), y)
-        dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+        #X_processed, y = self._process_data(Xtr, ytr, rebalance=self.rebalance_data)
+        #dataset = TensorDataset(*X_processed.values(), y)
+        dataset = NetworkDataset(Xtr,ytr)
+        X_aug,y_aug=dataset._process_data(0.3)
+        aug_dataset=TensorDataset(*X_aug.values(),y_aug)
+        dataloader = DataLoader(aug_dataset, batch_size=self.batch_size, shuffle=True)
         k = 0
         for _ in range(self.nepochs):
             print('epoch :', _)
@@ -118,11 +128,10 @@ class BaseRegressor(abc.ABC):
     def predict(self, X):
         X_processed, _ = self._process_data(X, y=None)
         with torch.no_grad():
+    
             if self.best_model is not None:
-                self.best_model.eval()
                 o =  self.best_model(*X_processed.values()).detach().numpy() 
             else:
-                self.net.eval()
                 o = self.net(*X_processed.values()).detach().numpy()
         return np.maximum(o, 0)
 
@@ -196,7 +205,7 @@ class Regressor(BaseRegressor):
         super().__init__()
         self.net = TotalNet()
         self.batch_size = 128
-        self.nepochs = 100
+        self.nepochs = 40
         self.holdout = 0.
         self.rebalance_data = True
         self.optimizer = torch.optim.Adam(self.net.parameters())
